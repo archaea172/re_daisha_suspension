@@ -29,27 +29,14 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 typedef struct{
-	volatile uint16_t CANID;
-	volatile uint8_t motorID;
-	volatile int16_t actVel;
-	volatile int16_t p_actVel;
-	volatile int16_t actangle;
-	volatile int16_t p_actangle;
-	volatile int16_t actCurrent;
-	volatile int16_t cu;
-	volatile float motor_pos_ref;
-	volatile float motor_spd;
-	volatile float motor_spd_ref;
-	volatile float pos_err;
-	volatile float last_pos_err;
-	volatile float sum_pos_err;
-	volatile float sum_err;
-	volatile float output_val;
-	volatile uint32_t last_update_time;
-	volatile float diff_pro;
-	volatile float motor_pos;
-	volatile int16_t trgVel;
-	volatile float hensa;
+	uint16_t CANID;
+	uint8_t motorID;
+	volatile float actVel;//rpm
+	volatile float actangle;
+	volatile float actCurrent;
+	float cu;
+	float trgVel;
+	volatile float p_actVel;//rpm
 	volatile float ind;
 }motor;
 /* USER CODE END PTD */
@@ -84,6 +71,7 @@ FDCAN_HandleTypeDef hfdcan3;
 TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim7;
 TIM_HandleTypeDef htim16;
+TIM_HandleTypeDef htim17;
 
 UART_HandleTypeDef huart2;
 
@@ -100,15 +88,11 @@ int8_t sub_state;
 float32_t RxData_f32[16] = {};
 uint32_t CANID_R = 0;
 
-motor robomas[8] = {
-		{0x201, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0x202, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0x203, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0x204, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0x205, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0x206, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0x207, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0x208, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+motor robomas[4] = {
+		{0x201, 1, 0, 0, 0, 0, 0, 0, 0},
+		{0x202, 2, 0, 0, 0, 0, 0, 0, 0},
+		{0x203, 3, 0, 0, 0, 0, 0, 0, 0},
+		{0x204, 4, 0, 0, 0, 0, 0, 0, 0},
 };
 /* USER CODE END PV */
 
@@ -121,6 +105,7 @@ static void MX_TIM6_Init(void);
 static void MX_TIM7_Init(void);
 static void MX_TIM16_Init(void);
 static void MX_FDCAN3_Init(void);
+static void MX_TIM17_Init(void);
 /* USER CODE BEGIN PFP */
 void CAN_SEND_printf(uint32_t, uint8_t*);
 void CAN(uint32_t, float32_t*);
@@ -128,6 +113,8 @@ void CAN_SEND_printf_robomas(uint32_t, uint8_t*);
 void CAN_robomas(motor*);
 void interboard_comms_CAN_RxTxSettings_nhk2025_init(void);
 void robomas_CAN_RxTxSettings_nhk2025_init(void);
+
+void omni_calc(float theta,float vx,float vy,float omega,float *w0,float *w1,float *w2,float *w3);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -142,7 +129,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 			Error_Handler();
 		}
 		/*receive robomas's status*/
-		for (int i=0; i < 8; i++){
+		for (int i=0; i < 4; i++){
 			if (RxHeader_motor.Identifier == (robomas[i].CANID)) {
 				robomas[i].actangle = (int16_t)((RxData_motor[0] << 8) | RxData_motor[1]);
 				robomas[i].actVel = (int16_t)((RxData_motor[2] << 8) | RxData_motor[3]);
@@ -189,7 +176,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		}
 	}
 	else if (&htim16 == htim) {
-
+		for (int i = 0; i < 4; i++) {
+			float kp = 10, kd = 0.009, ki = 0.2;
+			float dt = 0.001;
+			float hensa = robomas[i].trgVel - robomas[i].actVel;
+			float derivative = (robomas[i].p_actVel - robomas[i].actVel)/dt;
+			robomas[i].ind += hensa;
+			robomas[i].cu = kp*hensa + kd*derivative + ki*robomas[i].ind;
+			robomas[i].p_actVel = robomas[i].actVel;
+			if (Robomas[i].cu > 10000) Robomas[i].cu = 10000;
+			if (Robomas[i].cu < -10000) Robomas[i].cu = -10000;
+		}
+		CAN_robomas(robomas);
 	}
 }
 
@@ -236,6 +234,7 @@ int main(void)
   MX_TIM7_Init();
   MX_TIM16_Init();
   MX_FDCAN3_Init();
+  MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
   printf("start\r\n");
   //FDCAN_RxTxSettings();
@@ -246,6 +245,7 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim6);
   HAL_TIM_Base_Start_IT(&htim7);
   HAL_TIM_Base_Start_IT(&htim16);
+  HAL_TIM_Base_Start_IT(&htim17);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -510,6 +510,38 @@ static void MX_TIM16_Init(void)
 }
 
 /**
+  * @brief TIM17 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM17_Init(void)
+{
+
+  /* USER CODE BEGIN TIM17_Init 0 */
+
+  /* USER CODE END TIM17_Init 0 */
+
+  /* USER CODE BEGIN TIM17_Init 1 */
+
+  /* USER CODE END TIM17_Init 1 */
+  htim17.Instance = TIM17;
+  htim17.Init.Prescaler = 9;
+  htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim17.Init.Period = 7999;
+  htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim17.Init.RepetitionCounter = 0;
+  htim17.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim17) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM17_Init 2 */
+
+  /* USER CODE END TIM17_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -609,15 +641,15 @@ void CAN_SEND_printf_robomas(uint32_t CANID, uint8_t *txdata) {
 
 void CAN_robomas(motor *Robomas) {
 	uint8_t TxData_motor_0x200[8];
-	uint8_t TxData_motor_0x1ff[8];
+	//uint8_t TxData_motor_0x1ff[8];
 	for (int i = 0; i < 4; i++) {
 		TxData_motor_0x200[i*2] = (Robomas[i].cu) >> 8;
 		TxData_motor_0x200[i*2+1] = (uint8_t)((Robomas[i].cu) & 0xff);
-		TxData_motor_0x1ff[i*2] = (Robomas[i+4].cu) >> 8;
-		TxData_motor_0x1ff[i*2+1] = (uint8_t)((Robomas[i+4].cu) & 0xff);
+		//TxData_motor_0x1ff[i*2] = (Robomas[i+4].cu) >> 8;
+		//TxData_motor_0x1ff[i*2+1] = (uint8_t)((Robomas[i+4].cu) & 0xff);
 	}
 	CAN_SEND_printf_robomas(0x200, TxData_motor_0x200);
-	CAN_SEND_printf_robomas(0x1ff, TxData_motor_0x1ff);
+	//CAN_SEND_printf_robomas(0x1ff, TxData_motor_0x1ff);
 }
 
 void interboard_comms_CAN_RxTxSettings_nhk2025_init(void) {
@@ -658,6 +690,24 @@ void robomas_CAN_RxTxSettings_nhk2025_init(void) {
 		  printf("fdcan_activatenotification is error\r\n");
 		  break;
 	}
+}
+
+void omni_calc(float theta,float vx,float vy,float omega,float *w0,float *w1,float *w2,float *w3){
+
+	float v[3] = {vx, vy, omega};
+	float sint = sin(theta);
+	float cost = cos(theta);
+
+	float arr[4][3] =
+	{{-cos(a0)*sint-sin(a0)*cost, cos(a0)*cost-sin(a0)*sint, R},
+	{-cos(a1)*sint-sin(a1)*cost, cos(a1)*cost-sin(a1)*sint, R},
+	{-cos(a2)*sint-sin(a2)*cost, cos(a2)*cost-sin(a2)*sint, R},
+	{-cos(a3)*sint-sin(a3)*cost, cos(a3)*cost-sin(a3)*sint, R}};
+
+	*w0 = (arr[0][0] * v[0] + arr[0][1] * v[1] + arr[0][2] * v[2]) / r;
+	*w1 = (arr[1][0] * v[0] + arr[1][1] * v[1] + arr[1][2] * v[2]) / r;
+	*w2 = (arr[2][0] * v[0] + arr[2][1] * v[1] + arr[2][2] * v[2]) / r;
+	*w3 = (arr[3][0] * v[0] + arr[3][1] * v[1] + arr[3][2] * v[2]) / r;
 }
 /* USER CODE END 4 */
 
