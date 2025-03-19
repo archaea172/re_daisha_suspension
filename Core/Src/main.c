@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include "t_semi_can_lib.h"
 /* USER CODE END Includes */
 
@@ -76,6 +77,12 @@ TIM_HandleTypeDef htim17;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+const float a0 = M_PI/180*45;
+const float a1 = M_PI/180*135;
+const float a2 = M_PI/180*225;
+const float a3 = M_PI/180*315;
+const float r = 0.03;//m
+const float R = 0.144;//m
 
 FDCAN_TxHeaderTypeDef TxHeader;
 FDCAN_RxHeaderTypeDef RxHeader;
@@ -115,6 +122,7 @@ void interboard_comms_CAN_RxTxSettings_nhk2025_init(void);
 void robomas_CAN_RxTxSettings_nhk2025_init(void);
 
 void omni_calc(float theta,float vx,float vy,float omega,float *w0,float *w1,float *w2,float *w3);
+float convert_rpm_radps(float rpm);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -184,8 +192,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			robomas[i].ind += hensa;
 			robomas[i].cu = kp*hensa + kd*derivative + ki*robomas[i].ind;
 			robomas[i].p_actVel = robomas[i].actVel;
-			if (Robomas[i].cu > 10000) Robomas[i].cu = 10000;
-			if (Robomas[i].cu < -10000) Robomas[i].cu = -10000;
+			if (robomas[i].cu > 10000) robomas[i].cu = 10000;
+			if (robomas[i].cu < -10000) robomas[i].cu = -10000;
 		}
 		CAN_robomas(robomas);
 	}
@@ -643,8 +651,8 @@ void CAN_robomas(motor *Robomas) {
 	uint8_t TxData_motor_0x200[8];
 	//uint8_t TxData_motor_0x1ff[8];
 	for (int i = 0; i < 4; i++) {
-		TxData_motor_0x200[i*2] = (Robomas[i].cu) >> 8;
-		TxData_motor_0x200[i*2+1] = (uint8_t)((Robomas[i].cu) & 0xff);
+		TxData_motor_0x200[i*2] = ((int16_t)Robomas[i].cu) >> 8;
+		TxData_motor_0x200[i*2+1] = (uint8_t)(((int16_t)Robomas[i].cu) & 0xff);
 		//TxData_motor_0x1ff[i*2] = (Robomas[i+4].cu) >> 8;
 		//TxData_motor_0x1ff[i*2+1] = (uint8_t)((Robomas[i+4].cu) & 0xff);
 	}
@@ -708,6 +716,11 @@ void omni_calc(float theta,float vx,float vy,float omega,float *w0,float *w1,flo
 	*w1 = (arr[1][0] * v[0] + arr[1][1] * v[1] + arr[1][2] * v[2]) / r;
 	*w2 = (arr[2][0] * v[0] + arr[2][1] * v[1] + arr[2][2] * v[2]) / r;
 	*w3 = (arr[3][0] * v[0] + arr[3][1] * v[1] + arr[3][2] * v[2]) / r;
+}
+
+float convert_rpm_radps(float rpm) {
+	float radps = rpm/60*2*M_PI;
+	return radps;
 }
 /* USER CODE END 4 */
 
