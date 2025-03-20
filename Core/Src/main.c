@@ -59,6 +59,8 @@ typedef struct{
 
 #define STATE_CANID_DOWN STATE_CANID_P_DOWN + (ID*16)
 #define STATE_CANID_UP STATE_CANID_P_UP + (ID*16)
+#define VEL_CANID 0x300
+#define ODOMETRY_CANID_SENSOR 0x200
 
 #define R_F 4
 #define L_F 3
@@ -107,6 +109,12 @@ motor robomas[4] = {
 		{0x203, 3, 0, 0, 0, 0, 0, 0, 0, 0},
 		{0x204, 4, 0, 0, 0, 0, 0, 0, 0, 0},
 };
+
+float theta = 0;
+float vx = 0, vy = 0, omega = 0;
+
+volatile float theta_r = 0;
+volatile float vx_r = 0, vy_r = 0, omega_r = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -188,6 +196,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			}
 			else if (ERROR_STATE == RxData_f32[0]) {
 				state = RxData_f32[0];
+			}
+			else if (VEL_CANID == CANID_R) {
+				vx_r 	= RxData_f32[0];
+				vy_r 	= RxData_f32[1];
+				omega_r = RxData_f32[2];
+			}
+			else if (ODOMETRY_CANID_SENSOR == CANID_R) {
+				theta_r = RxData_f32[2];
 			}
 		}
 	}
@@ -275,7 +291,11 @@ int main(void)
 
 	  }
 	  else if (MOVE_STATE == state) {
-
+		  vx 	= vx_r;
+		  vy 	= vy_r;
+		  omega = omega_r;
+		  theta = theta_r;
+		  omni_control(theta, vx, vy, omega, robomas);
 	  }
 	  HAL_Delay(10);
     /* USER CODE END WHILE */
