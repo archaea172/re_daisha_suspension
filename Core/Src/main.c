@@ -39,6 +39,7 @@ typedef struct{
 	float trgVel;
 	volatile float p_actVel;//rpm
 	volatile float ind;
+	float w;
 }motor;
 /* USER CODE END PTD */
 
@@ -58,6 +59,11 @@ typedef struct{
 
 #define STATE_CANID_DOWN STATE_CANID_P_DOWN + (ID*16)
 #define STATE_CANID_UP STATE_CANID_P_UP + (ID*16)
+
+#define R_F 4
+#define L_F 3
+#define R_B 1
+#define L_B 2
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -96,10 +102,10 @@ float32_t RxData_f32[16] = {};
 uint32_t CANID_R = 0;
 
 motor robomas[4] = {
-		{0x201, 1, 0, 0, 0, 0, 0, 0, 0},
-		{0x202, 2, 0, 0, 0, 0, 0, 0, 0},
-		{0x203, 3, 0, 0, 0, 0, 0, 0, 0},
-		{0x204, 4, 0, 0, 0, 0, 0, 0, 0},
+		{0x201, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0x202, 2, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0x203, 3, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0x204, 4, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 /* USER CODE END PV */
 
@@ -123,6 +129,8 @@ void robomas_CAN_RxTxSettings_nhk2025_init(void);
 
 void omni_calc(float theta,float vx,float vy,float omega,float *w0,float *w1,float *w2,float *w3);
 float convert_rpm_radps(float rpm);
+float convert_radps_rpm(float radps) ;
+void omni_control(float Theta, float Vx, float Vy, float Omega, motor *Robomas);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -721,6 +729,16 @@ void omni_calc(float theta,float vx,float vy,float omega,float *w0,float *w1,flo
 float convert_rpm_radps(float rpm) {
 	float radps = rpm/60*2*M_PI;
 	return radps;
+}
+
+float convert_radps_rpm(float radps) {
+	float rpm = radps*60/2/M_PI;
+	return rpm;
+}
+
+void omni_control(float Theta, float Vx, float Vy, float Omega, motor *Robomas) {
+	omni_calc(Theta ,Vx, Vy, Omega, &Robomas[R_F-1].w, &Robomas[L_F-1].w, &Robomas[L_B-1].w, &Robomas[R_B-1].w);
+	for (int i = 0; i < 4; i++) Robomas[i].trgVel = convert_radps_rpm(Robomas[i].w)*36*(-1);
 }
 /* USER CODE END 4 */
 
