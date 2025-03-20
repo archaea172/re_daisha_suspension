@@ -216,10 +216,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			robomas[i].ind += hensa;
 			robomas[i].cu = kp*hensa + kd*derivative + ki*robomas[i].ind;
 			robomas[i].p_actVel = robomas[i].actVel;
+
 			if (robomas[i].cu > 10000) robomas[i].cu = 10000;
 			if (robomas[i].cu < -10000) robomas[i].cu = -10000;
+			if (ERROR_STATE == state) robomas[i].cu = 0;
 		}
 		CAN_robomas(robomas);
+	}
+	else if (&htim17 == htim) {
+
 	}
 }
 
@@ -285,10 +290,12 @@ int main(void)
   while (1)
   {
 	  if (ERROR_STATE == state) {
-
+		  vx = 0;
+		  vy = 0;
+		  omega = 0;
 	  }
 	  else if (INITIALIZE_STATE == state) {
-
+		  for (int i = 0; i < 4; i++) robomas[i].ind = 0;
 	  }
 	  else if (MOVE_STATE == state) {
 		  vx 	= vx_r;
