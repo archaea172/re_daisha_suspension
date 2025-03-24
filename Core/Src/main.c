@@ -296,6 +296,7 @@ int main(void)
 	  }
 	  else if (INITIALIZE_STATE == state) {
 		  for (int i = 0; i < 4; i++) robomas[i].ind = 0;
+		  state = MOVE_STATE;
 	  }
 	  else if (MOVE_STATE == state) {
 		  vx 	= vx_r;
